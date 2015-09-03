@@ -1,0 +1,152 @@
+buildscript {
+    repositories {
+        mavenLocal()
+        jcenter()
+    }
+    dependencies {
+        // Not possible (AFAIK) to use project dependencies in buildscript
+        classpath 'net.praqma.luci:luci-gradlePlugin:0.2'
+        classpath 'net.praqma.luci:luci-core:0.2'
+    }
+}
+
+apply plugin: net.praqma.luci.gradle.LuciPlugin
+
+
+luci {
+
+    machineFactories {
+        virtualBox {
+            // Arguments passed to 'docker-machine create'. $name is expaned to the
+            // machine name
+            createArgs = ['-d', 'virtualbox', '$name']
+        }
+
+        zetta {
+            def userName = project.properties.zettaUsername
+            def password = project.properties.zettaPassword
+            def domainId = project.properties.zettaDomainId
+            
+            createArgs = ['-d', 'openstack', '--openstack-flavor-id', '6', '--openstack-image-id', 'd0a89aa8-9644-408d-a023-4dcc1148ca01',
+                          '--openstack-floatingip-pool', 'Public', '--openstack-ssh-user', 'ubuntu', '--openstack-net-name', 'Private',
+                          '--openstack-sec-groups', 'default,DockerAPI', '--openstack-auth-url', 'https://identity.api.zetta.io/v3',
+                          '--openstack-domain-id', domainId, '--openstack-region', 'no-osl1',
+                          '--openstack-tenant-name', 'Standard', '--openstack-username', userName, '--openstack-password', password,
+                         '$name']
+        }
+    }
+
+    hosts {
+        boxone {
+            // Fails if docker machine lucibox doesn't exists
+            // TODO implement other settings, like explicit url
+            dockerMachine factory: machineFactories.virtualBox
+        }
+        slaves {
+            dockerMachine(name: 'slaves', factory: machineFactories.virtualBox)
+        }
+        zetta1 {
+            dockerMachine name: 'luci-one', factory: machineFactories.zetta
+        }
+        zetta2 {
+            dockerMachine name: 'luci-two', factory: machineFactories.zetta
+        }
+
+    }
+
+    boxes {
+
+        // A Lucibox name 'demo'
+        demo {
+           // socatForTlsHackPort = 2375
+            dockerHost = hosts.zetta1
+
+            // Use data container so service containers and be deleted without losing data.
+            // This can also be specified on individual services
+            useDataContainer = true
+
+            service('jenkins') {
+                // List of plugins to install. Explicit version numbers or latest
+                // Hmmm, maybe I don't know what chucknorris is, but I don't see Chuck anywhere, but it is in the list of installed plugins
+                // plugins chucknorris: '0.5', greenballs: 'latest' TODO is broken, jenkins fails to start
+
+
+                staticSlave('default') {
+                    executors = 3 // default is 2
+                    // Use java tools image by Luci. But you can use any image you like
+                    dockerImage = 'luci/staticslave-javatools:0.2'
+                    labels 'one'
+                }
+
+                staticSlave('anotherSlave') {
+                    dockerHost = hosts.slaves
+                    dockerImage = 'luci/staticslave-javatools:0.2'
+                    labels 'two', 'three'
+                }
+
+                /* onDemandSlave('shell') {
+                   dockerImage 'luci/slave-shell:0.2'
+                   } */
+
+                // Add groovy files in the jenkinsInit.d dir to the jenkins init.d dir
+                initFiles fileTree(dir: 'jenkinsInit.d', include: '**/*.groovy')
+
+                // You can also specify files with a Gradle CopySpec
+                // See https://docs.gradle.org/current/userguide/working_with_files.html for some examples
+                initFiles {
+                    // Copy all templates files from jenkinsInit.d
+                    from 'jenkinsInit.d'
+                    include '*.template'
+                    // Change extension from .template to  .groovy
+                    rename '(.*)\\.template', '$1\\.groovy'
+                    // Insert the project name in templates
+                    expand(name: name)
+                }
+
+                // Generate a Jobdsl seed job (and execute it)
+                seedJob.with {
+                    name = "{project.name}_Seed_Job"
+                    jobDslFile = file('jenkinsConfig/jobDsl.groovy')
+                }
+            }
+        }
+
+        // A Lucibox named 'showcase'
+        showcase {
+
+            port = 8090
+            // socatForTlsHackPort = 2374
+
+            // Declare one or more services. There is a pre-defined set of service names
+            service 'jenkins'
+
+            // Configure a declared serviced
+            jenkins {
+                // Set executors on Masters. Defautls is none
+                executors = 5
+
+                // Add a number of static slaves
+                (1..2).each { int index ->
+                    staticSlave("worker$index") {
+                        // set executors on slaves
+                        executors = index
+                        dockerImage = 'debian:jessie'
+                    }
+                }
+            }
+
+            // Declare and configure a service
+            service('artifactory') {
+
+            }
+
+            // configure the webfrontend service. It is alway present
+            webfrontend {
+                // not implemented yet. This has no effect
+                user 'luci', 'praqma'
+            }
+        }
+    }
+}
+
+  
