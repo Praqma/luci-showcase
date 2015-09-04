@@ -1,38 +1,50 @@
+//plugins {
+//    id "net.praqma.luci" version "0.3"
+//}
+
+// For developing on Luci it is convenient to use a plugin from mavenLocal().
+// Use the buildscript to do that
+
 buildscript {
     repositories {
         mavenLocal()
         jcenter()
     }
-    dependencies {
-        // Not possible (AFAIK) to use project dependencies in buildscript
-        classpath 'net.praqma.luci:luci-gradlePlugin:0.2'
-        classpath 'net.praqma.luci:luci-core:0.2'
-    }
+    dependencies { classpath 'net.praqma.luci:luci-gradlePlugin:0.4-SNAPSHOT' }
 }
 
-apply plugin: net.praqma.luci.gradle.LuciPlugin
+apply plugin: 'net.praqma.luci'
 
 
 luci {
 
     machineFactories {
-        virtualBox {
-            // Arguments passed to 'docker-machine create'. $name is expaned to the
-            // machine name
-            createArgs = ['-d', 'virtualbox', '$name']
-        }
+        // Here you can define so called machineFactories. You specify how to create docker hosts
+        // with docker-machine
+        // There are some factories defined out of the box:
+        // virtualbox:    Create a docker machine on VirtualBox
+        // zetta:         Create a machine on Zetta.io. The properties 'zetta.username', 'zetta.password', 'zetta.domainId'.
 
-        zetta {
-            def userName = project.properties.zettaUsername
-            def password = project.properties.zettaPassword
-            def domainId = project.properties.zettaDomainId
-            
-            createArgs = ['-d', 'openstack', '--openstack-flavor-id', '6', '--openstack-image-id', 'd0a89aa8-9644-408d-a023-4dcc1148ca01',
-                          '--openstack-floatingip-pool', 'Public', '--openstack-ssh-user', 'ubuntu', '--openstack-net-name', 'Private',
-                          '--openstack-sec-groups', 'default,DockerAPI', '--openstack-auth-url', 'https://identity.api.zetta.io/v3',
-                          '--openstack-domain-id', domainId, '--openstack-region', 'no-osl1',
-                          '--openstack-tenant-name', 'Standard', '--openstack-username', userName, '--openstack-password', password,
-                         '$name']
+        // Properties can be defined as System properties, Gradle project properties, or as Luci settings
+
+        // The task 'listMachineFactories' lists all defined machine factories
+
+        // The zetta factory could be defined like the following
+        zetta2 {
+            driver 'openstack'
+
+            options 'openstack-flavor-id': '6',
+                    'openstack-image-id': 'd0a89aa8-9644-408d-a023-4dcc1148ca01',
+                    'openstack-floatingip-pool': 'Public',
+                    'openstack-ssh-user': 'ubuntu',
+                    'openstack-net-name': 'Private',
+                    'openstack-sec-groups': 'default,DockerAPI',
+                    'openstack-auth-url': 'https://identity.api.zetta.io/v3',
+                    'openstack-region': 'no-osl1',
+                    'openstack-tenant-name': 'Standard',
+                    'openstack-domain-id': '${lookup("zetta.domainId")}',
+                    'openstack-username': '${lookup("zetta.username")}',
+                    'openstack-password': '${lookup("zetta.password")}'
         }
     }
 
@@ -58,7 +70,7 @@ luci {
 
         // A Lucibox name 'demo'
         demo {
-           // socatForTlsHackPort = 2375
+            // socatForTlsHackPort = 2375
             dockerHost = hosts.zetta1
 
             // Use data container so service containers and be deleted without losing data.
@@ -79,7 +91,7 @@ luci {
                 }
 
                 staticSlave('anotherSlave') {
-                    dockerHost = hosts.slaves
+                    dockerHost = hosts.zetta2
                     dockerImage = 'luci/staticslave-javatools:0.2'
                     labels 'two', 'three'
                 }
