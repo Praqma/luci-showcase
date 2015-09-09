@@ -1,20 +1,19 @@
-//plugins {
-//    id "net.praqma.luci" version "0.3"
-//}
+plugins {
+    id "net.praqma.luci" version "0.4.4"
+}
 
 // For developing on Luci it is convenient to use a plugin from mavenLocal().
 // Use the buildscript to do that
-
+/*
 buildscript {
     repositories {
         mavenLocal()
         jcenter()
     }
-    dependencies { classpath 'net.praqma.luci:luci-gradlePlugin:0.4-SNAPSHOT' }
+    dependencies { classpath 'net.praqma.luci:luci-gradlePlugin:0.4.4' }
 }
-
 apply plugin: 'net.praqma.luci'
-
+*/
 
 luci {
 
@@ -31,8 +30,9 @@ luci {
 
         // The zetta factory could be defined like the following
         zetta2 {
-            driver 'openstack'
-
+            driver = 'openstack'
+            // logCommand = true
+            // debug = true
             options 'openstack-flavor-id': '6',
                     'openstack-image-id': 'd0a89aa8-9644-408d-a023-4dcc1148ca01',
                     'openstack-floatingip-pool': 'Public',
@@ -46,23 +46,33 @@ luci {
                     'openstack-username': '${lookup("zetta.username")}',
                     'openstack-password': '${lookup("zetta.password")}'
         }
+
+        virtualBox {
+          //  debug = true
+          //  logCommand = true
+        }
     }
 
     hosts {
-        boxone {
+        vm1 {
             // Fails if docker machine lucibox doesn't exists
             // TODO implement other settings, like explicit url
+            dockerMachine factory: machineFactories.virtualBox
+        }
+        vm2 {
             dockerMachine factory: machineFactories.virtualBox
         }
         slaves {
             dockerMachine(name: 'slaves', factory: machineFactories.virtualBox)
         }
+        /*
         zetta1 {
             dockerMachine name: 'luci-one', factory: machineFactories.zetta
         }
         zetta2 {
             dockerMachine name: 'luci-two', factory: machineFactories.zetta
         }
+        */
 
     }
 
@@ -70,8 +80,7 @@ luci {
 
         // A Lucibox name 'demo'
         demo {
-            // socatForTlsHackPort = 2375
-            dockerHost = hosts.zetta1
+            dockerHost = hosts.vm1
 
             // Use data container so service containers and be deleted without losing data.
             // This can also be specified on individual services
@@ -86,19 +95,15 @@ luci {
                 staticSlave('default') {
                     executors = 3 // default is 2
                     // Use java tools image by Luci. But you can use any image you like
-                    dockerImage = 'luci/staticslave-javatools:0.2'
+                    dockerImage = 'luci/staticslave-javatools:0.5'
                     labels 'one'
                 }
 
                 staticSlave('anotherSlave') {
-                    dockerHost = hosts.zetta2
-                    dockerImage = 'luci/staticslave-javatools:0.2'
+                    //dockerHost = hosts.zetta2
+                    dockerImage = 'luci/staticslave-javatools:0.5'
                     labels 'two', 'three'
                 }
-
-                /* onDemandSlave('shell') {
-                   dockerImage 'luci/slave-shell:0.2'
-                   } */
 
                 // Add groovy files in the jenkinsInit.d dir to the jenkins init.d dir
                 initFiles fileTree(dir: 'jenkinsInit.d', include: '**/*.groovy')
@@ -117,15 +122,20 @@ luci {
 
                 // Generate a Jobdsl seed job (and execute it)
                 seedJob.with {
-                    name = "{project.name}_Seed_Job"
-                    jobDslFile = file('jenkinsConfig/jobDsl.groovy')
+                    name = "${project.name}_Seed_Job"
+                    jobDslFiles fileTree(dir: 'jobDsl')
                 }
+            }
+
+             // Declare and configure a service
+            service('artifactory') {
+
             }
         }
 
         // A Lucibox named 'showcase'
         showcase {
-
+            dockerHost = hosts.vm1
             port = 8090
             // socatForTlsHackPort = 2374
 
@@ -134,7 +144,7 @@ luci {
 
             // Configure a declared serviced
             jenkins {
-                // Set executors on Masters. Defautls is none
+                // Set executors on Masters. Defautls is one (EXCLUSIVE)
                 executors = 5
 
                 // Add a number of static slaves
