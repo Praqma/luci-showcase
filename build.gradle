@@ -65,19 +65,16 @@ luci {
         slaves {
             dockerMachine(name: 'slaves', factory: machineFactories.virtualBox)
         }
-        /*
+        
         zetta1 {
             dockerMachine name: 'luci-one', factory: machineFactories.zetta
         }
         zetta2 {
             dockerMachine name: 'luci-two', factory: machineFactories.zetta
         }
-        */
-
     }
 
     boxes {
-
         // A Lucibox name 'demo'
         demo {
             dockerHost = hosts.vm1
@@ -167,6 +164,23 @@ luci {
                 // not implemented yet. This has no effect
                 user 'luci', 'praqma'
             }
+        }
+
+        training {
+          dockerHost = hosts.zetta1
+          
+          service 'jenkins', 'artifactory'
+
+          jenkins {
+            staticSlave('worker1') {
+              dockerImage = 'luci/staticslave-javatools:0.5'
+              executors = 3
+            }
+            staticSlave('worker2') {
+              dockerImage = 'luci/staticslave-javatools:0.5'
+              executors = 4
+            }
+          }
         }
     }
 }
